@@ -1,0 +1,147 @@
+﻿@using System.ComponentModel
+@using System.ComponentModel.DataAnnotations
+
+@inject ITMDBService tmdbService
+
+<div>
+    <EditForm Model="MovieInput" OnValidSubmit="HandleSubmit">
+        <DataAnnotationsValidator />
+        <div class="hstack gap-2">
+            <InputText class="form-control"
+                       @bind-Value="MovieInput.MovieTitle"
+                       placeholder="Enter a movie title"
+                       autocomplete="off"
+                       autocorrect="off"
+                       spellcheck="false"
+                       @oninput="OnInputChanged" />
+            <button class="btn btn-primary" type="submit">Search</button>
+        </div>
+        <input type="hidden" @bind-value="MovieInput.MovieId" />
+        <input type="hidden" @bind-value="MovieInput.ReleaseDate" />
+        <ValidationMessage For="() => MovieInput.MovieTitle" />
+        <!---Show the typeahead results-->
+        @if (movies?.Any() == true)
+        {
+            <div class="suggestions-wrapper">
+                <ul class="suggestions">
+                    @foreach (var movie in movies)
+                    {
+                        <li class="fw-bold" @onclick="() => SelectMovie(movie)">@movie.Title (@(DateTime.TryParse(movie.ReleaseDate, out var date) ? date.Year : "Unkown"))</li>
+                    }
+                </ul>
+            </div>
+        }
+
+    </EditForm>
+</div>
+
+@code {
+    MovieInputModel MovieInput = new();
+    private List<Movie> movies = [];
+    private Movie? selectedMovie;
+
+    private Timer? debounceTimer;
+    private Timer? inactivityTimer;
+    private int debounceDelay = 500; // milliseconds
+
+    [Parameter]
+    public EventCallback<int> OnMovieSelected { get; set; }
+
+
+    private async Task HandleSubmit()
+    {
+
+        if (MovieInput.MovieId == 0)
+        {
+            return;
+        }
+
+         // Trigger the callback to notify the parent component
+         await OnMovieSelected.InvokeAsync(MovieInput.MovieId);
+        
+    }
+
+
+    #region Search TypeAhead
+
+    private async Task SearchMovies()
+    {
+        //if search is empty and clear any results
+        if (string.IsNullOrWhiteSpace(MovieInput.MovieTitle))
+        {
+            movies.Clear();
+        }
+        else
+        {
+            try
+            {
+                var response = await tmdbService.SearchMoviesAsync(MovieInput.MovieTitle);
+
+                movies = response ?? new List<Movie>();
+            }
+            catch (Exception ex)
+            {
+                // Handle the exception (e.g., log it, show a message, etc.)
+                Console.WriteLine($"Error searching movies: {ex.Message}");
+                movies.Clear();
+            }
+        }
+        //trigger a ui refresh
+        StateHasChanged();
+    }
+
+    private void OnInputChanged(ChangeEventArgs e)
+    {
+        MovieInput.MovieTitle = e.Value?.ToString() ?? "";
+
+        //dsipose any existing timers
+        debounceTimer?.Dispose();
+
+        //create a new timee that calls search movies after a debounce delay
+        debounceTimer = new Timer(async _ =>
+        {
+
+            await InvokeAsync(async () =>
+        {
+            await SearchMovies();
+            ResetInactivityTimer();
+        });
+        }, null, debounceDelay, Timeout.Infinite);
+
+    }
+
+    private void ResetInactivityTimer()
+    {
+        inactivityTimer?.Dispose();
+
+        inactivityTimer = new Timer(_ =>
+        {
+            // Handle inactivity (e.g., show a message, log out, etc.)
+            InvokeAsync(() =>
+        {
+            movies.Clear();
+            StateHasChanged();
+
+        });
+        }, null, 10000, Timeout.Infinite); // 30 seconds of inactivity
+    }
+
+    private void SelectMovie(Movie movie)
+    {
+        MovieInput.MovieTitle = movie.Title;
+        MovieInput.ReleaseDate = movie.ReleaseDate;
+        MovieInput.MovieId = movie.Id;
+        movies.Clear();
+    }
+
+    #endregion
+
+    public class MovieInputModel
+    {
+        [Required]
+        public string? MovieTitle { get; set; }
+        public string? ReleaseDate { get; set; }
+        [Required]
+        public int MovieId { get; set; }
+    }
+}

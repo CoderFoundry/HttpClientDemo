@@ -1,0 +1,30 @@
+﻿.suggestions-wrapper {
+    position: relative;
+}
+
+
+.suggestions {
+    position: absolute;
+    top: 0;
+    left: 0;
+    border: 1px solid #ccc;
+    background-color: #fff;
+    color: black;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 500; /*Ensure it is over the controls*/
+}
+
+    .suggestions li {
+        padding: 8px 12px;
+        cursor: pointer;
+        color: black;
+    }
+
+        .suggestions li:hover,
+        .suggestions li.active {
+            background-color: #f0f0f0;
+        }
